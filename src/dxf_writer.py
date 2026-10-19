@@ -13,11 +13,19 @@ Uklad: GML (X=north, Y=east) -> DXF (east, north). Wspolrzedne 1:1.
 """
 
 import math
+import os
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
+from ezdxf.addons import Importer
 
 from mapping import resolve, all_styles, required_linetypes, Style
 from gml_parser import Feature
+
+# Domyslna sciezka do pliku wzorcowego z definicjami blokow (biblioteka symboli)
+DEFAULT_SYMBOL_LIBRARY = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "ex_02_MZ_DXF_500.dxf",
+)
 
 
 def _to_dxf(pt: tuple[float, float]) -> tuple[float, float]:
@@ -50,11 +58,39 @@ def _ensure_layers(doc, styles: list[Style]) -> None:
         doc.layers.add(st.layer, **attribs)
 
 
-def _build_symbol_blocks(doc, symbols: set[str]) -> None:
-    """Tworzy uproszczone definicje blokow dla wszystkich uzytych symboli.
+def _import_symbol_blocks(doc, symbols: set[str], library_path: str) -> set[str]:
+    """Importuje dokladne definicje blokow z pliku wzorcowego (biblioteki).
 
-    Ksztalty umowne (docelowo zastapic dokladnymi znakami z zalacznika do
-    rozporzadzenia). Rozmiar bazowy w metrach (skala projektowa 1:1).
+    Zwraca zbior nazw blokow, ktore udalo sie zaimportowac. Pozostale (brak
+    w bibliotece lub brak pliku) obsluguje fallback z uproszczonymi ksztaltami.
+    """
+    imported: set[str] = set()
+    if not library_path or not os.path.isfile(library_path):
+        return imported
+    try:
+        ref = ezdxf.readfile(library_path)
+    except Exception:
+        return imported
+
+    available = {name for name in symbols
+                 if name and name in ref.blocks and name not in doc.blocks}
+    if not available:
+        return imported
+    try:
+        imp = Importer(ref, doc)
+        imp.import_blocks(sorted(available))
+        imp.finalize()
+        imported = {n for n in available if n in doc.blocks}
+    except Exception:
+        pass
+    return imported
+
+
+def _build_symbol_blocks(doc, symbols: set[str]) -> None:
+    """Tworzy uproszczone definicje blokow (fallback) dla podanych symboli.
+
+    Uzywane tylko dla blokow niedostepnych w bibliotece wzorcowej.
+    Rozmiar bazowy w metrach (skala projektowa 1:1).
     """
     s = 0.4  # polowa rozmiaru symbolu w metrach
 
@@ -95,11 +131,6 @@ def _build_symbol_blocks(doc, symbols: set[str]) -> None:
             circle(name, s * 1.1)
         else:
             square(name)
-
-
-def _collect_symbols() -> set[str]:
-    return {st.symbol for st in all_styles() if st.symbol} | \
-           {resolve(k).symbol for k in ()}  # placeholder
 
 
 def _write_feature(msp, feat: Feature, label_attr: str | None) -> int:
@@ -153,7 +184,8 @@ def _label_anchor(feat: Feature) -> tuple[float, float] | None:
 
 
 def write(features: list[Feature], out_path: str,
-          label_attr: str | None = None) -> dict:
+          label_attr: str | None = None,
+          symbol_library: str | None = DEFAULT_SYMBOL_LIBRARY) -> dict:
     doc = ezdxf.new("R2010", setup=True)
     doc.header["$INSUNITS"] = 6  # metry
     msp = doc.modelspace()
@@ -161,10 +193,16 @@ def write(features: list[Feature], out_path: str,
     _ensure_linetypes(doc)
     styles = all_styles()
     _ensure_layers(doc, styles)
-    symbols = {st.symbol for st in styles if st.symbol}
-    _build_symbol_blocks(doc, symbols)
 
-    stats = {"features": 0, "entities": 0, "layers": {}, "unmapped": 0}
+    symbols = {st.symbol for st in styles if st.symbol}
+    # 1) Zaimportuj dokladne definicje blokow z pliku wzorcowego (jesli jest).
+    imported = _import_symbol_blocks(doc, symbols, symbol_library or "")
+    # 2) Dla pozostalych symboli utworz uproszczony ksztalt (fallback).
+    _build_symbol_blocks(doc, symbols - imported)
+
+    stats = {"features": 0, "entities": 0, "layers": {}, "unmapped": 0,
+             "symbols_imported": len(imported),
+             "symbols_fallback": len(symbols - imported)}
     for feat in features:
         style = resolve(feat.local_name)
         if style.layer == "OPISOD_T_0":

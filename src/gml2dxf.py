@@ -16,7 +16,7 @@ import os
 import sys
 
 from gml_parser import parse
-from dxf_writer import write
+from dxf_writer import write, DEFAULT_SYMBOL_LIBRARY
 from mapping import MAPPING, DEFAULT_STYLE
 
 
@@ -39,6 +39,12 @@ def main(argv=None) -> int:
                     help="nazwa atrybutu obiektu uzywana jako opis tekstowy")
     ap.add_argument("--list-mapping", action="store_true",
                     help="wypisz tablice mapowan i zakoncz")
+    ap.add_argument("--symbol-library", metavar="DXF",
+                    help="sciezka do pliku wzorcowego z definicjami blokow "
+                         "(domyslnie ex_02_MZ_DXF_500.dxf w repo)")
+    ap.add_argument("--no-symbol-library", action="store_true",
+                    help="nie importuj blokow z wzorca; uzyj uproszczonych "
+                         "ksztaltow zastepczych")
     args = ap.parse_args(argv)
 
     if args.list_mapping:
@@ -61,14 +67,21 @@ def main(argv=None) -> int:
         print("Ostrzezenie: nie znaleziono zadnych obiektow z geometria.",
               file=sys.stderr)
 
+    if args.no_symbol_library:
+        library = None
+    else:
+        library = args.symbol_library or DEFAULT_SYMBOL_LIBRARY
+
     print(f"Zapis DXF: {out}")
-    stats = write(features, out, label_attr=args.label)
+    stats = write(features, out, label_attr=args.label, symbol_library=library)
 
     print("\nPodsumowanie konwersji")
     print("  " + "-" * 40)
     print(f"  obiekty:          {stats['features']}")
     print(f"  encje DXF:        {stats['entities']}")
     print(f"  bez mapowania:    {stats['unmapped']}")
+    print(f"  bloki z wzorca:   {stats['symbols_imported']}")
+    print(f"  bloki zastepcze:  {stats['symbols_fallback']}")
     print("  rozklad warstw:")
     for layer, cnt in sorted(stats["layers"].items(),
                              key=lambda kv: -kv[1]):

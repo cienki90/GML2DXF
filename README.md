@@ -75,11 +75,32 @@ Cała semantyka redakcyjna jest w `src/mapping.py`. W komentarzach oznaczono:
 - `[WZORZEC]` — kolor/warstwa potwierdzone w pliku wzorcowym,
 - `[ZALOZENIE]` — rozwinięcie przyjęte logicznie, do weryfikacji.
 
+## Symbole punktowe (bloki)
+
+Konwerter **importuje dokładne definicje bloków** (znaki umowne) bezpośrednio
+z pliku wzorcowego `ex_02_MZ_DXF_500.dxf` — wstawione symbole są identyczne
+z wzorcem (np. `3_SUWW` = studnia wodociągowa, `2_EGBP12_01` = punkt graniczny).
+
+- Domyślnie biblioteką symboli jest `ex_02_MZ_DXF_500.dxf` w katalogu repo.
+- Inną bibliotekę można wskazać flagą `--symbol-library SCIEZKA.dxf`.
+- Flaga `--no-symbol-library` wyłącza import i generuje uproszczone kształty
+  zastępcze (gdy wzorzec niedostępny).
+
+```bash
+# domyślnie: dokładne bloki z wzorca
+python src/gml2dxf.py examples/przyklad.gml
+
+# własna biblioteka symboli
+python src/gml2dxf.py examples/przyklad.gml --symbol-library inny_wzorzec.dxf
+
+# bez wzorca (kształty zastępcze)
+python src/gml2dxf.py examples/przyklad.gml --no-symbol-library
+```
+
 ## Znane ograniczenia / dalsze kroki
 
-- **Symbole punktowe** mają na razie uproszczone kształty pod poprawnymi kodami
-  bloków (np. `3_SUWW`, `2_EGBP12_01`). Docelowo można wstawić dokładne
-  definicje bloków skopiowane z pliku wzorcowego.
 - Brak transformacji między układami (PL-2000 ↔ PL-1992) — do dodania w razie
   potrzeby (np. przez `pyproj`).
 - Wzory typów linii są uproszczone; pełne wzory wg załącznika do rozporządzenia.
+- Rzadsze kody sieci (`SUN`, `SUS`, `SUL`) oznaczone w `mapping.py` jako
+  `[ZALOZENIE]` — do weryfikacji z rozporządzeniem.
